@@ -1,5 +1,6 @@
 package com.example.objectdetection
 
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -17,16 +18,16 @@ import android.view.View.OnLongClickListener
 import android.widget.ImageView
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
-import com.example.objectdetection.R
+import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.io.IOException
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), ObjectDetectorHelper.DetectorListener  {
     private val RESULT_LOAD_IMAGE = 123
     val IMAGE_CAPTURE_CODE = 654
     private val PERMISSION_CODE = 321
     var innerImage: ImageView? = null
     private var image_uri: Uri? = null
-
+    private lateinit var objectDetectorHelper: ObjectDetectorHelper
 
     @RequiresApi(Build.VERSION_CODES.M)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,10 +67,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         //TODO intialize object detector
+        objectDetectorHelper =
+            ObjectDetectorHelper(threshold = 0.5f, context = applicationContext, maxResults = ObjectDetectorHelper.MAX_RESULTS_DEFAULT, currentDelegate = ObjectDetectorHelper.DELEGATE_CPU, modelName = "js_model.tflite", runningMode = RunningMode.IMAGE)
+
+
 
     }
 
-    //open camera to capture picture
     private fun openCamera() {
         val values = ContentValues()
         values.put(MediaStore.Images.Media.TITLE, "New Picture")
@@ -95,8 +99,56 @@ class MainActivity : AppCompatActivity() {
 
     //TODO pass image to the model and shows the results on screen
     private fun doInference() {
+        //TODO convert image into bitmap and show image
+        val bitmap = uriToBitmap(image_uri!!)
+        val rotatedBmp = rotateBitmap(bitmap!!)
+        innerImage!!.setImageBitmap(rotatedBmp)
+        if (rotatedBmp != null) {
+            val mutableBmp = rotatedBmp!!.copy(Bitmap.Config.ARGB_8888, true)
+            val canvas = Canvas(mutableBmp)
 
+            val p = Paint()
+            p.color = Color.RED
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = (mutableBmp.width / 95).toFloat()
+
+            val paintText = Paint()
+            paintText.color = Color.BLUE
+            paintText.textSize = (mutableBmp.width / 10).toFloat()
+            paintText.isFakeBoldText = true
+
+
+            var resultBundle = objectDetectorHelper.detectImage(rotatedBmp)
+            if(resultBundle != null){
+                var resultsList = resultBundle.results
+                for(singleResult in resultsList){
+                    var detections = singleResult.detections()
+                    for(singleDetection in detections){
+                        singleDetection.boundingBox()
+                        var categorieslist = singleDetection.categories()
+                        var objectName = ""
+                        var objectScore = 0f
+                        for(singleCategory in categorieslist){
+                            Log.d("tryRess",singleCategory.categoryName()+"   "+singleDetection.boundingBox().toString())
+                            if(singleCategory.score()>objectScore){
+                                objectScore = singleCategory.score()
+                                objectName = singleCategory.categoryName()
+                            }
+                        }
+                        canvas.drawRect(singleDetection.boundingBox(),p)
+                        canvas.drawText(
+                            objectName,
+                            singleDetection.boundingBox().left,
+                            singleDetection.boundingBox().top,
+                            paintText
+                        )
+                    }
+                }
+                innerImage!!.setImageBitmap(mutableBmp)
+            }
+        }
     }
+
 
     //TODO takes URI of the image and returns bitmap
     private fun uriToBitmap(selectedFileUri: Uri): Bitmap? {
@@ -154,6 +206,14 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == PERMISSION_CODE && grantResults.size > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             openCamera()
         }
+    }
+
+    override fun onError(error: String, errorCode: Int) {
+        TODO("Not yet implemented")
+    }
+
+    override fun onResults(resultBundle: ObjectDetectorHelper.ResultBundle) {
+        TODO("Not yet implemented")
     }
 
 }
